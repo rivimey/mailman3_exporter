@@ -13,7 +13,7 @@ Download and run the latest binary from the [releases tab](https://github.com/ri
 
 ## Usage
 
-By default, the exporter serves on port `9543` at `/metrics`. 
+By default, the exporter serves on port `9934` at `/metrics`. 
 
 ## Building
 
