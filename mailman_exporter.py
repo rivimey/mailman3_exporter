@@ -1,3 +1,4 @@
+#!/bin/env python3
 # -*- coding: utf-8 -*-
 """
     Prometheus mailman3 exporter using rest api's.
@@ -15,6 +16,7 @@ from prometheus_client.core import GaugeMetricFamily
 app = Flask(__name__)
 exporter = None
 MM_API_VERS="3.1"
+_DEBUG = False
 
 class MailmanExporter:
 
@@ -22,12 +24,14 @@ class MailmanExporter:
         self.REGISTRY = CollectorRegistry(auto_describe=False)
         self.mailman3_up = Gauge('mailman3_up', 'Status of mailman-core; 1 if accessible, 0 otherwise', registry=self.REGISTRY)
         self.mailman3_queue = GaugeMetricFamily('mailman3_queues', 'Queue length for mailman-core')
-        self.REGISTRY.register(self.mailman3_queue)
+        # TODO: needed but this doesn't work.
+        #self.REGISTRY.register(self.mailman3_queue)
 
 
     def args(self):
         parser = argparse.ArgumentParser(description='Mailman3 Prometheus metrics exporter')
         #parser.add_argument('-c', '--config', dest='config', type=str, help='Pass in a configuration file')
+        parser.add_argument('-d', '--debug', dest='debug', type=bool, help='Enable debug output')
         parser.add_argument('-l', '--web.listen', dest='web_listen', type=str, default="localhost:9543", help='HTTPServer listen address')
 
         parser.add_argument('-m', '--mailman.address', dest='mailman_address', type=str, default="http://localhost:8870", help='Mailman3 Core REST API address')
@@ -36,6 +40,8 @@ class MailmanExporter:
 
         args = parser.parse_args()
         self.web_listen = args.web_listen
+        global _DEBUG
+        _DEBUG = args.debug
         self.mailman_address = args.mailman_address
         self.mailman_user = args.mailman_user
         self.mailman_password = args.mailman_password
