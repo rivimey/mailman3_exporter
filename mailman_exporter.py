@@ -8,46 +8,64 @@
 import requests
 import argparse
 import json
+import logging
 import re
-from flask import Flask, Response
-from prometheus_client import generate_latest, Gauge, CollectorRegistry
-from prometheus_client.core import GaugeMetricFamily
-
-app = Flask(__name__)
+import sys
+import signal
+import time
+import pprint
+from prometheus_client import start_http_server, generate_latest, Gauge, CollectorRegistry
+from prometheus_client.core import GaugeMetricFamily, REGISTRY
 exporter = None
 MM_API_VERS="3.1"
-_DEBUG = False
+
+PROCESSING_TIME = None
+class metric_processing_time:
+    def __init__(self, name):
+        self.start = None
+        self.name = name
+
+    def __enter__(self):
+        self.start = time.process_time()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        elapsed = (time.process_time() - self.start) * 1000
+        logging.debug('Processing %s took %s miliseconds' % (self.name, elapsed))
+        PROCESSING_TIME.add_metric([self.name], elapsed)
 
 class MailmanExporter:
 
     def __init__(self):
-        self.REGISTRY = CollectorRegistry(auto_describe=False)
-        self.mailman3_up = Gauge('mailman3_up', 'Status of mailman-core; 1 if accessible, 0 otherwise', registry=self.REGISTRY)
-        self.mailman3_queue = GaugeMetricFamily('mailman3_queues', 'Queue length for mailman-core')
-        # TODO: needed but this doesn't work.
-        #self.REGISTRY.register(self.mailman3_queue)
-
+        self.web_listen = ""
+        self.mailman_address = ""
+        self.mailman_user = ""
+        self.mailman_password = ""
 
     def args(self):
         parser = argparse.ArgumentParser(description='Mailman3 Prometheus metrics exporter')
-        #parser.add_argument('-c', '--config', dest='config', type=str, help='Pass in a configuration file')
-        parser.add_argument('-d', '--debug', dest='debug', type=bool, help='Enable debug output')
-        parser.add_argument('-l', '--web.listen', dest='web_listen', type=str, default="localhost:9934", help='HTTPServer listen address')
+        #parser.add_argument('-v', '--verbose', dest='verbose', action='count', help='Enable verbose output')
+        parser.add_argument('--log-level', default='INFO', choices=['debug', 'info', 'warning', 'error', 'critical'], help='Detail level to log. (default: info)')
+        parser.add_argument('-l', '--web.listen', dest='web_listen', type=str, default="localhost:9934", help='HTTPServer metrics listen address')
 
         parser.add_argument('-m', '--mailman.address', dest='mailman_address', type=str, default="http://localhost:8870", help='Mailman3 Core REST API address')
         parser.add_argument('-u', '--mailman.user', dest='mailman_user', type=str, required=True, help='Mailman3 Core REST API username')
         parser.add_argument('-p', '--mailman.password', dest='mailman_password', type=str, required=True, help='Mailman3 Core REST API password')
-
         args = parser.parse_args()
+
+        log_format = '[%(asctime)s] %(name)s.%(levelname)s %(threadName)s %(message)s'
+        log_handler = logging.StreamHandler()
+        log_handler.setFormatter(logging.Formatter(log_format))
+        log_level = logging.os.environ.get('LOG_LEVEL', 'INFO')
+        log_level = getattr(logging, args.log_level.upper(), log_level.upper() )
+        logging.basicConfig(handlers=[log_handler], level=log_level)
+        logging.captureWarnings(True)
+
         self.web_listen = args.web_listen
-        global _DEBUG
-        _DEBUG = args.debug
         self.mailman_address = args.mailman_address
         self.mailman_user = args.mailman_user
         self.mailman_password = args.mailman_password
-        if _DEBUG:
-            url = self.mailman_url("/")
-            print("mailman URL: %s" % url)
+        url = self.mailman_url("/")
+        logging.info("Querying Mailman at URL: <%s>", url)
 
         return args
 
@@ -58,37 +76,64 @@ class MailmanExporter:
         return "{}/{}{}".format(self.mailman_address, MM_API_VERS, uri)
 
     def versions(self):
+        logging.debug("call versions:")
         url = self.mailman_url("/system/versions")
         response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
-        if _DEBUG:
-            print("versions: url %s" % response.request.url)
-            print("versions: content %s" % response.content)
+        logging.debug("versions: url %s" % response.request.url)
+        logging.debug("versions: content %s" % response.content)
         return response
 
     def queues(self):
+        logging.debug("call queues:")
         url = self.mailman_url("/queues")
         response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
-        if _DEBUG:
-            print("queues: url %s" % response.request.url)
-            print("queues: content %s" % response.content)
+        logging.debug("queues: url %s" % response.request.url)
+        logging.debug("queues: content %s" % response.content)
         return response
 
+
+class MailmanCollector(object):
+
+    def __init__(self, exporter):
+        self.exporter = exporter
+
     def collect(self):
-        resp = self.versions()
-        if 200 <= resp.status_code < 220:
-            self.mailman3_up.inc()
-        yield self.mailman3_up
+        global PROCESSING_TIME
+        proc_labels = [ 'method', 'up', 'queue' ]
+        PROCESSING_TIME = GaugeMetricFamily('processing_time_ms', 'Time taken to collect metrics', labels=proc_labels)
 
-        resp = self.queues()
-        if 200 <= resp.status_code < 220:
-            qlist = resp.json()
-            qinfo = {}
-            for e in qlist:
-                self.mailman3_queue.add_metric([e.name], value=e.count)
-        yield self.mailman3_queue
+        with metric_processing_time('up'):
+            logging.debug("call collect")
+            mailman3_up = GaugeMetricFamily('mailman3_up', 'Status of mailman-core; 1 if accessible, 0 otherwise')
+            resp = self.exporter.versions()
+            if 200 <= resp.status_code < 220:
+                mailman3_up.add_metric(['up'], 1)
+            else:
+                mailman3_up.add_metric(['up'], 0)
+            yield mailman3_up
+
+        with metric_processing_time('queue'):
+            qlabels = [ 'queue',
+                "archive", "bad", "bounces", "command",
+                "digest", "in", "nntp", "out", "pipeline",
+                "retry", "shunt", "virgin"
+            ]
+            mailman3_queue = GaugeMetricFamily('mailman3_queues', 'Queue length for mailman-core internal queues', labels=qlabels)
+            mailman3_queue_status = GaugeMetricFamily('mailman3_queues_status', 'HTTP code for queue status request')
+            resp = self.exporter.queues()
+            if 200 <= resp.status_code < 220:
+                qlist = resp.json()
+                for e in qlist['entries']:
+                    logging.debug("queue metric %s value %s", e['name'], str(e['count']))
+                    mailman3_queue.add_metric([e['name']], value=e['count'])
+                mailman3_queue_status.add_metric(['status'], value=resp.status_code)
+            else:
+                mailman3_queue_status.add_metric(['status'], value=resp.status_code)
+            yield mailman3_queue
+
+        yield PROCESSING_TIME
 
 
-@app.route("/")
 def index():
     return """
 <html><head><title>Mailman3 Prometheus Exporter</title></head>
@@ -98,13 +143,6 @@ def index():
 <p>Visit the metrics page at: <a href="/metrics">/metrics</a>.</p>
 </body>
 """
-
-@app.route("/metrics")
-def mailman3Response():
-    global exporter
-    exporter.collect()
-    return Response(generate_latest(exporter.REGISTRY), mimetype="text/plain")
-
 
 def parse_host_port(listen):
     uri_info = re.split(r':', listen)
@@ -118,16 +156,32 @@ def parse_host_port(listen):
         hostname = uri_info[0]
         port = int(uri_info[1])
     else:
-        raise ValueError("listen address unexpected form (got '%s')" % listen)
-
+        logging.info("Listen address in unexpected form (got '%s')", listen)
+        raise ValueError("listen address in unexpected form (got '%s')" % listen)
     return (hostname, port)
+
+def signal_handler():
+    shutdown(1)
+
+def shutdown(code):
+    logging.info('Shutting down')
+    sys.exit(code)
 
 def main():
     global exporter
+    signal.signal(signal.SIGTERM, signal_handler)
+
     exporter = MailmanExporter()
     cli_args = exporter.args()
     (hostname, port) = parse_host_port(cli_args.web_listen)
-    app.run(host=hostname, port=port, use_reloader=False)
+
+    logging.info('Starting server...')
+    start_http_server(addr=hostname, port=port, registry=REGISTRY)
+    logging.info('Server started on port %s', port)
+
+    REGISTRY.register(MailmanCollector(exporter))
+    while True:
+        time.sleep(1)
 
 
 if __name__ == '__main__':
