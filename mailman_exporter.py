@@ -15,7 +15,7 @@ import signal
 import time
 import pprint
 from prometheus_client import start_http_server, generate_latest, Gauge, CollectorRegistry
-from prometheus_client.core import GaugeMetricFamily, REGISTRY
+from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGISTRY
 exporter = None
 MM_API_VERS="3.1"
 
@@ -43,7 +43,6 @@ class MailmanExporter:
 
     def args(self):
         parser = argparse.ArgumentParser(description='Mailman3 Prometheus metrics exporter')
-        #parser.add_argument('-v', '--verbose', dest='verbose', action='count', help='Enable verbose output')
         parser.add_argument('--log-level', default='INFO', choices=['debug', 'info', 'warning', 'error', 'critical'], help='Detail level to log. (default: info)')
         parser.add_argument('-l', '--web.listen', dest='web_listen', type=str, default="localhost:9934", help='HTTPServer metrics listen address')
 
@@ -75,42 +74,131 @@ class MailmanExporter:
         """
         return "{}/{}{}".format(self.mailman_address, MM_API_VERS, uri)
 
+    def usercount(self):
+        response = { 'status_code': 0 }
+        try:
+            usrs = {}
+            url = self.mailman_url("/users?count=1&page=1")
+            response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
+            if 200 <= response.status_code < 220:
+                usrs = response.json()
+        except:
+            logging.info("usercount: exception")
+        finally:
+            logging.debug("usercount: url %s" % response.request.url)
+            logging.debug("usercount: content %s" % response.content)
+            return response.status_code, usrs
+
     def versions(self):
-        logging.debug("call versions:")
-        url = self.mailman_url("/system/versions")
-        response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
-        logging.debug("versions: url %s" % response.request.url)
-        logging.debug("versions: content %s" % response.content)
-        return response
+        response = { 'status_code': 0 }
+        try:
+            url = self.mailman_url("/system/versions")
+            response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
+        except:
+            logging.info("versions: exception")
+        finally:
+            logging.debug("versions: url %s" % response.request.url)
+            logging.debug("versions: content %s" % response.content)
+            return response.status_code, response
+
+    def domains(self):
+        response = { 'status_code': 0 }
+        domains = {}
+        try:
+            url = self.mailman_url("/domains")
+            response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
+            if 200 <= response.status_code < 220:
+                domains = response.json()
+        except:
+            logging.info("domains: exception")
+        finally:
+            logging.debug("domains: url %s" % response.request.url)
+            logging.debug("domains: content %s" % response.content)
+            return response.status_code, domains
+
+    def lists(self):
+        response = { 'status_code': 0 }
+        lists = {}
+        try:
+            url = self.mailman_url("/lists")
+            response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
+            if 200 <= response.status_code < 220:
+                lists = response.json()
+        except:
+            logging.info("lists: exception")
+        finally:
+            logging.debug("lists: url %s" % response.request.url)
+            logging.debug("lists: content %s" % response.content)
+            return response.status_code, lists
 
     def queues(self):
-        logging.debug("call queues:")
-        url = self.mailman_url("/queues")
-        response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
-        logging.debug("queues: url %s" % response.request.url)
-        logging.debug("queues: content %s" % response.content)
-        return response
+        response = { 'status_code': 0 }
+        queues = {}
+        try:
+            url = self.mailman_url("/queues")
+            response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
+            if 200 <= response.status_code < 220:
+                queues = response.json()
+        except:
+            logging.info("queues: exception")
+        finally:
+            logging.debug("queues: url %s" % response.request.url)
+            logging.debug("queues: content %s" % response.content)
+            return response.status_code, queues
 
 
 class MailmanCollector(object):
 
     def __init__(self, exporter):
         self.exporter = exporter
+        self.lastcheck = 0
+        self.domains = []
+        self.lists = []
 
     def collect(self):
         global PROCESSING_TIME
-        proc_labels = [ 'method', 'up', 'queue' ]
+        proc_labels = [ 'method', 'up', 'queue', 'domains', 'lists', 'users' ]
         PROCESSING_TIME = GaugeMetricFamily('processing_time_ms', 'Time taken to collect metrics', labels=proc_labels)
 
+        now = time.monotonic() 
+        if now - self.lastcheck > 60:
+            self.lastcheck = now
+
+            with metric_processing_time('domains'):
+                mailman3_domains = GaugeMetricFamily('mailman3_domains', 'Number of configured list domains')
+                status, self.domains = self.exporter.domains()
+                if 200 <= status < 220:
+                    mailman3_domains.add_metric(['count'], self.domains['total_size'])
+                else:
+                    mailman3_domains.add_metric(['count'], 0)
+                yield mailman3_domains
+
+            with metric_processing_time('lists'):
+                mailman3_lists = GaugeMetricFamily('mailman3_lists', 'Number of configured lists')
+                status, self.lists = self.exporter.lists()
+                if 200 <= status < 220:
+                    mailman3_lists.add_metric(['count'], self.lists['total_size'])
+                else:
+                    mailman3_lists.add_metric(['count'], 0)
+                yield mailman3_lists
+
         with metric_processing_time('up'):
-            logging.debug("call collect")
             mailman3_up = GaugeMetricFamily('mailman3_up', 'Status of mailman-core; 1 if accessible, 0 otherwise')
-            resp = self.exporter.versions()
-            if 200 <= resp.status_code < 220:
+            status, resp = self.exporter.versions()
+            if 200 <= status < 220:
                 mailman3_up.add_metric(['up'], 1)
             else:
                 mailman3_up.add_metric(['up'], 0)
             yield mailman3_up
+
+        with metric_processing_time('users'):
+            mailman3_users = CounterMetricFamily('mailman3_users', 'Number of list users recorded in mailman-core')
+            status, resp = self.exporter.usercount()
+            if 200 <= status < 220:
+                mailman3_users.add_metric(['count'], resp['total_size'])
+            else:
+                mailman3_users.add_metric(['count'], 0)
+            yield mailman3_users
 
         with metric_processing_time('queue'):
             qlabels = [ 'queue',
@@ -120,15 +208,14 @@ class MailmanCollector(object):
             ]
             mailman3_queue = GaugeMetricFamily('mailman3_queues', 'Queue length for mailman-core internal queues', labels=qlabels)
             mailman3_queue_status = GaugeMetricFamily('mailman3_queues_status', 'HTTP code for queue status request')
-            resp = self.exporter.queues()
-            if 200 <= resp.status_code < 220:
-                qlist = resp.json()
-                for e in qlist['entries']:
+            status, resp = self.exporter.queues()
+            if 200 <= status < 220:
+                for e in resp['entries']:
                     logging.debug("queue metric %s value %s", e['name'], str(e['count']))
                     mailman3_queue.add_metric([e['name']], value=e['count'])
-                mailman3_queue_status.add_metric(['status'], value=resp.status_code)
+                mailman3_queue_status.add_metric(['status'], value=status)
             else:
-                mailman3_queue_status.add_metric(['status'], value=resp.status_code)
+                mailman3_queue_status.add_metric(['status'], value=status)
             yield mailman3_queue
 
         yield PROCESSING_TIME
@@ -185,5 +272,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(0)
 
