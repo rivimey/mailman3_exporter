@@ -86,7 +86,7 @@ class MailmanExporter:
             logging.info("usercount: exception")
         finally:
             logging.debug("usercount: url %s" % response.request.url)
-            logging.debug("usercount: content %s" % response.content)
+            logging.debug("usercount: content %s" % response.content[:160])
             return response.status_code, usrs
 
     def versions(self):
@@ -98,7 +98,7 @@ class MailmanExporter:
             logging.info("versions: exception")
         finally:
             logging.debug("versions: url %s" % response.request.url)
-            logging.debug("versions: content %s" % response.content)
+            logging.debug("versions: content %s" % response.content[:160])
             return response.status_code, response
 
     def domains(self):
@@ -113,7 +113,7 @@ class MailmanExporter:
             logging.info("domains: exception")
         finally:
             logging.debug("domains: url %s" % response.request.url)
-            logging.debug("domains: content %s" % response.content)
+            logging.debug("domains: content %s" % response.content[:160])
             return response.status_code, domains
 
     def lists(self):
@@ -128,7 +128,7 @@ class MailmanExporter:
             logging.info("lists: exception")
         finally:
             logging.debug("lists: url %s" % response.request.url)
-            logging.debug("lists: content %s" % response.content)
+            logging.debug("lists: content %s" % response.content[:160])
             return response.status_code, lists
 
     def queues(self):
@@ -143,7 +143,7 @@ class MailmanExporter:
             logging.info("queues: exception")
         finally:
             logging.debug("queues: url %s" % response.request.url)
-            logging.debug("queues: content %s" % response.content)
+            logging.debug("queues: content %s" % response.content[:120])
             return response.status_code, queues
 
 
@@ -152,7 +152,10 @@ class MailmanCollector(object):
     def __init__(self, exporter):
         self.exporter = exporter
         self.lastcheck = 0
+
+        self.domains_status = 0
         self.domains = []
+        self.lists_status = 0
         self.lists = []
 
     def collect(self):
@@ -160,27 +163,42 @@ class MailmanCollector(object):
         proc_labels = [ 'method', 'up', 'queue', 'domains', 'lists', 'users' ]
         PROCESSING_TIME = GaugeMetricFamily('processing_time_ms', 'Time taken to collect metrics', labels=proc_labels)
 
+        slow_refresh = False
         now = time.monotonic() 
-        if now - self.lastcheck > 60:
+        if now - self.lastcheck > 30:
+            logging.debug("do slow_refresh")
+            slow_refresh = True
             self.lastcheck = now
 
-            with metric_processing_time('domains'):
-                mailman3_domains = GaugeMetricFamily('mailman3_domains', 'Number of configured list domains')
-                status, self.domains = self.exporter.domains()
-                if 200 <= status < 220:
-                    mailman3_domains.add_metric(['count'], self.domains['total_size'])
-                else:
-                    mailman3_domains.add_metric(['count'], 0)
-                yield mailman3_domains
+        with metric_processing_time('domains'):
+            mailman3_domains = GaugeMetricFamily('mailman3_domains', 'Number of configured list domains')
+            if slow_refresh:
+                self.domains_status, self.domains = self.exporter.domains()
+            if 200 <= self.domains_status < 220:
+                mailman3_domains.add_metric(['count'], self.domains['total_size'])
+            else:
+                mailman3_domains.add_metric(['count'], 0)
+            yield mailman3_domains
 
-            with metric_processing_time('lists'):
-                mailman3_lists = GaugeMetricFamily('mailman3_lists', 'Number of configured lists')
-                status, self.lists = self.exporter.lists()
-                if 200 <= status < 220:
-                    mailman3_lists.add_metric(['count'], self.lists['total_size'])
-                else:
-                    mailman3_lists.add_metric(['count'], 0)
-                yield mailman3_lists
+        with metric_processing_time('lists'):
+            mailman3_lists = GaugeMetricFamily('mailman3_lists', 'Number of configured lists')
+            if slow_refresh:
+                self.lists_status, self.lists = self.exporter.lists()
+            if 200 <= self.lists_status < 220:
+                mailman3_lists.add_metric(['count'], self.lists['total_size'])
+            else:
+                mailman3_lists.add_metric(['count'], 0)
+            yield mailman3_lists
+
+            mlabels = [ 'list' ]
+            for e in self.lists['entries']:
+                logging.debug("members: label %s" % e['fqdn_listname'])
+                mlabels.append(e['fqdn_listname'])
+            mailman3_list_members = CounterMetricFamily('mailman3_list_members', 'Count members per list', labels=mlabels)
+            for e in self.lists['entries']:
+                logging.debug("members metric %s value %s", e['fqdn_listname'], str(e['member_count']))
+                mailman3_list_members.add_metric([e['fqdn_listname']], value=e['member_count'])
+            yield mailman3_list_members
 
         with metric_processing_time('up'):
             mailman3_up = GaugeMetricFamily('mailman3_up', 'Status of mailman-core; 1 if accessible, 0 otherwise')
