@@ -84,22 +84,24 @@ class MailmanExporter:
                 usrs = response.json()
         except:
             logging.info("usercount: exception")
-        finally:
-            logging.debug("usercount: url %s" % response.request.url)
-            logging.debug("usercount: content %s" % response.content[:160])
-            return response.status_code, usrs
+            return 500, {}
+
+        logging.debug("usercount: url %s" % response.request.url)
+        logging.debug("usercount: content %s" % response.content[:160])
+        return response.status_code, usrs
 
     def versions(self):
-        response = { 'status_code': 0 }
+        response = { 'status_code': 0, 'request': '' }
         try:
             url = self.mailman_url("/system/versions")
             response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
         except:
             logging.info("versions: exception")
-        finally:
-            logging.debug("versions: url %s" % response.request.url)
-            logging.debug("versions: content %s" % response.content[:160])
-            return response.status_code, response
+            return 500, {}
+
+        logging.debug("versions: url %s" % response.request.url)
+        logging.debug("versions: content %s" % response.content[:160])
+        return response.status_code, response
 
     def domains(self):
         response = { 'status_code': 0 }
@@ -111,10 +113,11 @@ class MailmanExporter:
                 domains = response.json()
         except:
             logging.info("domains: exception")
-        finally:
-            logging.debug("domains: url %s" % response.request.url)
-            logging.debug("domains: content %s" % response.content[:160])
-            return response.status_code, domains
+            return 500, {}
+
+        logging.debug("domains: url %s" % response.request.url)
+        logging.debug("domains: content %s" % response.content[:160])
+        return response.status_code, domains
 
     def lists(self):
         response = { 'status_code': 0 }
@@ -126,10 +129,11 @@ class MailmanExporter:
                 lists = response.json()
         except:
             logging.info("lists: exception")
-        finally:
-            logging.debug("lists: url %s" % response.request.url)
-            logging.debug("lists: content %s" % response.content[:160])
-            return response.status_code, lists
+            return 500, {}
+
+        logging.debug("lists: url %s" % response.request.url)
+        logging.debug("lists: content %s" % response.content[:160])
+        return response.status_code, lists
 
     def queues(self):
         response = { 'status_code': 0 }
@@ -141,10 +145,11 @@ class MailmanExporter:
                 queues = response.json()
         except:
             logging.info("queues: exception")
-        finally:
-            logging.debug("queues: url %s" % response.request.url)
-            logging.debug("queues: content %s" % response.content[:120])
-            return response.status_code, queues
+            return 500, {}
+
+        logging.debug("queues: url %s" % response.request.url)
+        logging.debug("queues: content %s" % response.content[:120])
+        return response.status_code, queues
 
 
 class MailmanCollector(object):
@@ -182,22 +187,26 @@ class MailmanCollector(object):
 
         with metric_processing_time('lists'):
             mailman3_lists = GaugeMetricFamily('mailman3_lists', 'Number of configured lists')
+            no_lists = False
             if slow_refresh:
                 self.lists_status, self.lists = self.exporter.lists()
             if 200 <= self.lists_status < 220:
                 mailman3_lists.add_metric(['count'], self.lists['total_size'])
             else:
                 mailman3_lists.add_metric(['count'], 0)
+                no_lists = True
             yield mailman3_lists
 
             mlabels = [ 'list' ]
-            for e in self.lists['entries']:
-                logging.debug("members: label %s" % e['fqdn_listname'])
-                mlabels.append(e['fqdn_listname'])
+            if not no_lists:
+                for e in self.lists['entries']:
+                    logging.debug("members: label %s" % e['fqdn_listname'])
+                    mlabels.append(e['fqdn_listname'])
             mailman3_list_members = CounterMetricFamily('mailman3_list_members', 'Count members per list', labels=mlabels)
-            for e in self.lists['entries']:
-                logging.debug("members metric %s value %s", e['fqdn_listname'], str(e['member_count']))
-                mailman3_list_members.add_metric([e['fqdn_listname']], value=e['member_count'])
+            if not no_lists:
+                for e in self.lists['entries']:
+                    logging.debug("members metric %s value %s", e['fqdn_listname'], str(e['member_count']))
+                    mailman3_list_members.add_metric([e['fqdn_listname']], value=e['member_count'])
             yield mailman3_list_members
 
         with metric_processing_time('up'):
