@@ -1,0 +1,17 @@
+---
+
+- name: restart mailman3_exporter
+  service:
+    name: mailman3_exporter
+    state: restarted
+
+- name: reload mailman3_exporter
+  service:
+    name: mailman3_exporter
+    state: reloaded
+
+- name: reload systemd and restart mailman3_exporter
+  command: systemctl daemon-reload
+  notify: restart mailman3_exporter
+  tags:
+    - skip_ansible_lint

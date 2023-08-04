@@ -1,0 +1,32 @@
+---
+
+# The mailman3-exporter release to be installed
+mailman3_exporter_release_tag: "latest"
+
+# Tag name to fetch sources. no 'v' (0.1 not v0.1)
+mailman3_source_tag: "0.5"
+
+# The URL from which download the mailman3-exporter release
+mailman3_exporter_release_url: "https://codeload.github.com/rivimey/mailman3_exporter/archive/refs/tags/{{ mailman3_source_tag }}"
+
+# mailman3-exporter user and group
+mailman3_exporter_user: "mailman3_exporter"
+mailman3_exporter_group: "mailman3_exporter"
+
+mailman3_api_user: "restapi"
+mailman3_api_pass: "secret"
+
+# Directory containing the downloaded mailman3-exporter release
+mailman3_exporter_install_path: "/opt"
+
+# Directory to which symlink the installed mailman3-exporter binaries
+mailman3_exporter_bin_path: "/usr/local/bin"
+
+# mailman3-exporter listen address, default is "http://localhost:8870"
+mailman3_exporter_mailman_url: ""
+
+# mailman3-exporter listen address
+mailman3_exporter_listen_address: "127.0.0.1:9543"
+
+# Additional command-line arguments to be added to the mailman3-exporter unit
+mailman3_exporter_additional_cli_args: ""

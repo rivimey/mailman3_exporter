@@ -1,0 +1,88 @@
+---
+
+- name: Create the mailman3-exporter group
+  group:
+    name: "{{ mailman3_exporter_group }}"
+    system: true
+    state: present
+
+- name: Create the mailman3-exporter user
+  user:
+    name: "{{ mailman3_exporter_user }}"
+    group: "{{ mailman3_exporter_group }}"
+    system: yes
+    createhome: no
+    state: present
+
+- name: Make sure the mailman3-exporter install directory exists
+  file:
+    dest: "{{ mailman3_exporter_install_path }}/mailman3_exporter-{{ mailman3_source_tag }}"
+    state: directory
+    owner: "root"
+    group: "root"
+    mode: 0755
+    recurse: true
+
+- name: Download the mailman3-exporter
+  unarchive:
+    src: "https://github.com/rivimey/mailman3_exporter/archive/refs/tags/{{ mailman3_source_tag }}.zip"
+    dest: "{{ mailman3_exporter_install_path }}"
+    creates: "{{ mailman3_exporter_install_path }}/mailman-exporter-{{ mailman3_source_tag }}/mailman_exporter.py"
+    remote_src: yes
+  notify: restart mailman3_exporter
+
+- name: Set up virtualenv for mailman3-exporter
+  command: python3 -m venv .
+  args:
+    chdir: "{{ mailman3_exporter_install_path }}/mailman3_exporter-{{ mailman3_source_tag }}"
+    creates: "{{ mailman3_exporter_install_path }}/mailman3_exporter-{{ mailman3_source_tag }}/lib"
+
+- name: Install pip requirements for mailman3-exporter
+  pip:
+    requirements: "{{ mailman3_exporter_install_path }}/mailman3_exporter-{{ mailman3_source_tag }}/requirements.txt"
+    state: present
+
+- name: Symlink the mailman3-exporter binaries
+  file:
+    src: "{{ mailman3_exporter_install_path }}/mailman3_exporter-{{ mailman3_source_tag }}/mailman_exporter.py"
+    dest: "{{ mailman3_exporter_bin_path }}/mailman3_exporter"
+    state: link
+    force: yes
+  notify: restart mailman3_exporter
+
+- name: Create the Systemd Unit file for the mailman3-exporter service
+  template:
+    src: mailman3_exporter.systemd.j2
+    dest: /etc/systemd/system/mailman3_exporter.service
+    owner: root
+    group: root
+    mode: 0644
+  notify: reload systemd and restart mailman3_exporter
+  when: ansible_service_mgr == "systemd"
+
+- name: Create the Upstart Unit file for the mailman3-exporter service
+  template:
+    src: mailman3_exporter.upstart.j2
+    dest: /etc/init/mailman3_exporter.conf
+    owner: root
+    group: root
+    mode: 0644
+  notify: restart mailman3_exporter
+  when: ansible_service_mgr == "upstart"
+
+- name: Create the generic start-stop script for the mailman3-exporter service
+  template:
+    src: mailman3_exporter.service.j2
+    dest: /etc/init.d/mailman3_exporter
+    owner: root
+    group: root
+    mode: 0755
+  notify: restart mailman3_exporter
+  when: ansible_service_mgr not in [ "systemd", "upstart" ]
+
+- name: Start and enable the mailman3-exporter service
+  service:
+    name: mailman3_exporter
+    state: started
+    enabled: true
+

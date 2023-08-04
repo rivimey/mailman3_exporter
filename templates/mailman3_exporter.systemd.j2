@@ -1,0 +1,37 @@
+[Unit]
+Description=mailman3_exporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User={{ mailman3_exporter_user }}
+Group={{ mailman3_exporter_group }}
+Type=simple
+ExecStart={{ mailman3_exporter_bin_path }}/mailman3_exporter \
+          {% if mailman3_exporter_mailman_url %}-m {{ mailman3_exporter_mailman_url }}{% endif %} \
+          {% if mailman3_exporter_listen_address %}-l {{ mailman3_exporter_listen_address }}{% endif %} \
+          {% if mailman3_exporter_additional_cli_args %}{{ mailman3_exporter_additional_cli_args }}{% endif %} \
+          -u "{{ mailman3_api_user }}" \
+          -p "{{ mailman3_api_pass }}"
+Restart=always
+
+ProtectHome=true
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+PrivateDevices=true
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallFilter=~@obsolete
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+
+[Install]
+WantedBy=multi-user.target
