@@ -1,4 +1,4 @@
-#!/home/ruth/mailman3_exporter/bin/python3.10
+#!/home/ruth/mailman3_exporter/bin/python3.11
 # -*- coding: utf-8 -*-
 import re
 import sys
