@@ -33,14 +33,17 @@ program with the correct virtual environment.
 By default, the exporter serves on port `9934` at `/metrics`. The help message
 includes: 
 
+```
 mailman\_exporter.py --mailman.user MAILMAN\_USER
                      --mailman.password MAILMAN\_PASSWORD
                      [-l WEB\_LISTEN]
                      [-m MAILMAN\_ADDRESS]
                      [--log-level {debug,info,warning,error,critical}]
+```
 
 User and password are not optional.
 
+```
 Arguments:
   -h, --help            show this help message and exit
   --log-level {debug,info,warning,error,critical}
@@ -53,8 +56,8 @@ Arguments:
                         Mailman3 Core REST API username
   -p MAILMAN\_PASSWORD, --mailman.password MAILMAN\_PASSWORD
                         Mailman3 Core REST API password
+```
 
 ## Metrics
 
 See example metrics in [tests](https://github.com/mailman3/mailman_exporter/blob/master/test/update.metrics).
-
