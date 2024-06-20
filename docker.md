@@ -1,5 +1,7 @@
 # Mailman3 Exporter for Prometheus (docker)
 
+> Don't forget `--web.listen`
+
 ## Build image
 
 ```shell
@@ -9,8 +11,10 @@ docker build -t {image_name}:{version} .
 ## Run
 
 ```shell
-docker run -it -p 9934:9934 --name mailman3_exporter {image_name}:{version} --mailman.user {mailman_user} --mailman.password {mailman_password} --mailman.address {mailman_address}
+docker run --rm -p 9934:9934 --name mailman3_exporter {image_name}:{version} --mailman.user {mailman_user} --mailman.password {mailman_password} --mailman.address {mailman_address} --web.listen 0.0.0.0:9934
 ```
+
+The metrics are accessible at `http://127.0.0.1:9934`
 
 ## Publish image
 
@@ -27,8 +31,6 @@ docker push {docker_username}/{image_name}:{version}
 ```
 
 ## k8s
-
-> Don't forget `--web.listen`
 
 ```yml
 # Mailman 3 prometheus exporter
