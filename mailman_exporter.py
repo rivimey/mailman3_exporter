@@ -7,14 +7,12 @@
 
 import requests
 import argparse
-import json
 import logging
 import re
 import sys
 import signal
 import time
-import pprint
-from prometheus_client import start_http_server, generate_latest, Gauge, CollectorRegistry
+from prometheus_client import start_http_server
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGISTRY
 exporter = None
 MM_API_VERS="3.1"
