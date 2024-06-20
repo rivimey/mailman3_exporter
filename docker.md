@@ -90,3 +90,9 @@ spec:
     app: mailman-prometheus-exporter
 
 ```
+
+## Troubleshooting
+
+### Error: This site can’t be reached
+
+You probably forgot `--web.listen 0.0.0.0:9934`
