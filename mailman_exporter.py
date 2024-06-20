@@ -89,8 +89,8 @@ class MailmanExporter:
             response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
             if 200 <= response.status_code < 220:
                 usrs = response.json()
-        except:
-            logging.info("usercount: exception")
+        except Exception as e:
+            logging.error(f"usercount(exception): {e}")
             return 500, {}
 
         logging.debug("usercount: url %s" % response.request.url)
@@ -102,8 +102,8 @@ class MailmanExporter:
         try:
             url = self.mailman_url("/system/versions")
             response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
-        except:
-            logging.info("versions: exception")
+        except Exception as e:
+            logging.error(f"versions(exception): {e}")
             return 500, {}
 
         logging.debug("versions: url %s" % response.request.url)
@@ -118,8 +118,8 @@ class MailmanExporter:
             response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
             if 200 <= response.status_code < 220:
                 domains = response.json()
-        except:
-            logging.info("domains: exception")
+        except Exception as e:
+            logging.error(f"domains(exception): {e}")
             return 500, {}
 
         logging.debug("domains: url %s" % response.request.url)
@@ -134,8 +134,8 @@ class MailmanExporter:
             response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
             if 200 <= response.status_code < 220:
                 lists = response.json()
-        except:
-            logging.info("lists: exception")
+        except Exception as e:
+            logging.error(f"lists(exception): {e}")
             return 500, {}
 
         logging.debug("lists: url %s" % response.request.url)
@@ -150,8 +150,8 @@ class MailmanExporter:
             response = requests.get(url, auth=(self.mailman_user, self.mailman_password))
             if 200 <= response.status_code < 220:
                 queues = response.json()
-        except:
-            logging.info("queues: exception")
+        except Exception as e:
+            logging.error(f"queues(exception): {e}")
             return 500, {}
 
         logging.debug("queues: url %s" % response.request.url)
