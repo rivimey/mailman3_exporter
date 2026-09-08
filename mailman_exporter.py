@@ -48,7 +48,10 @@ class MailmanExporter:
 
         parser.add_argument('-m', '--mailman.address', dest='mailman_address', type=str, default="http://localhost:8870", help='Mailman3 Core REST API address')
         parser.add_argument('-u', '--mailman.user', dest='mailman_user', type=str, required=True, help='Mailman3 Core REST API username')
-        parser.add_argument('-p', '--mailman.password', dest='mailman_password', type=str, required=True, help='Mailman3 Core REST API password')
+
+        group = parser.add_mutually_exclusive_group(required=True)
+        group.add_argument('-p', '--mailman.password', dest='mailman_password', type=str, help='Mailman3 Core REST API password')
+        group.add_argument('--mailman.password-file', dest='mailman_password_file', type=str, help='Mailman3 Core REST API password file')
         args = parser.parse_args()
 
         log_format = '[%(asctime)s] %(name)s.%(levelname)s %(threadName)s %(message)s'
@@ -62,7 +65,11 @@ class MailmanExporter:
         self.web_listen = args.web_listen
         self.mailman_address = args.mailman_address
         self.mailman_user = args.mailman_user
-        self.mailman_password = args.mailman_password
+        if args.mailman_password is not None:
+            self.mailman_password = args.mailman_password
+        else:
+            with open(args.mailman_password_file, 'r', encoding = 'utf-8') as f:
+                self.mailman_password = f.read() 
         url = self.mailman_url("/")
         logging.info("Querying Mailman at URL: <%s>", url)
 
