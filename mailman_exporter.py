@@ -259,7 +259,7 @@ def index():
 """
 
 def parse_host_port(listen):
-    uri_info = re.split(r':', listen)
+    uri_info = listen.rsplit(r':', 1)
     if len(uri_info) == 0:
         hostname = 'localhost'
         port = 9934
@@ -272,6 +272,10 @@ def parse_host_port(listen):
     else:
         logging.info("Listen address in unexpected form (got '%s')", listen)
         raise ValueError("listen address in unexpected form (got '%s')" % listen)
+
+    if hostname.startswith('['):
+        hostname = hostname[1:-1]
+
     return (hostname, port)
 
 def signal_handler():
